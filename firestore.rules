@@ -1,0 +1,163 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HELPER FUNCTIONS & SÉCURITÉ ALLÔ DABOU
+    // =========================================================================
+
+    // Vérifie si l'utilisateur est authentifié
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Vérifie si l'utilisateur est le Super Administrateur désigné
+    function isSuperAdminEmail() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'mardoukeni@gmail.com' ||
+        request.auth.token.email == 'mardoukenki@gmail.com'
+      );
+    }
+
+    // Vérifie si l'utilisateur a le rôle administrateur (Super Admin, Token Claim OU existence de admins/{uid})
+    function isAdmin() {
+      return isAuthenticated() && (
+        isSuperAdminEmail() ||
+        (request.auth.token.keys().hasAny(['role']) && request.auth.token.role == 'admin') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Vérifie si l'utilisateur est un chauffeur agréé officiel
+    function isApprovedDriver() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isApprovedDriver == true;
+    }
+
+    // Liste des champs réservés et immuables pour un utilisateur standard
+    function hasNoRestrictedDriverFieldModifications() {
+      let forbiddenFields = [
+        'role',
+        'isApprovedDriver',
+        'approved',
+        'ratingAverage',
+        'ratingCount',
+        'totalRatingSum',
+        'applicationStatus',
+        'rejectionReason',
+        'suspensionReason',
+        'reviewedBy',
+        'reviewedAt',
+        'adminNote',
+        'checklist',
+        'driverCode',
+        'hasLicense',
+        'cardType',
+        'cardNumber',
+        'cardValidFrom',
+        'cardValidUntil'
+      ];
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(forbiddenFields);
+    }
+
+    // =========================================================================
+    // COLLECTION : admins
+    // =========================================================================
+    // Le Super Administrateur peut gérer (créer, lister, supprimer) jusqu'à 5 administrateurs.
+    // Chaque admin peut également mettre à jour ses jetons fcmTokens.
+    match /admins/{uid} {
+      allow get: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      allow create, delete: if isSuperAdminEmail();
+      allow update: if isSuperAdminEmail() || (
+        isAuthenticated() && request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens', 'lastSeenAt'])
+      );
+    }
+
+    // =========================================================================
+    // COLLECTION : users (Clients, Chauffeurs en attente, Chauffeurs agréés)
+    // =========================================================================
+    match /users/{uid} {
+      // Lecture individuelle par tout utilisateur connecté
+      allow get: if isAuthenticated();
+
+      // Liste des profils : réservée aux administrateurs
+      allow list: if isAdmin();
+
+      // Création : par l'utilisateur lui-même à l'inscription (statut initial pending forcé)
+      allow create: if isAuthenticated() && request.auth.uid == uid &&
+        request.resource.data.role in ['client', 'driver_pending'] &&
+        (!('applicationStatus' in request.resource.data) || request.resource.data.applicationStatus == 'pending') &&
+        (!('isApprovedDriver' in request.resource.data) || request.resource.data.isApprovedDriver == false) &&
+        (!('approved' in request.resource.data) || request.resource.data.approved == false);
+
+      // Mise à jour :
+      // - L'admin peut tout modifier (approbation, refus, checklist, notes)
+      // - Le propriétaire du compte ne peut modifier QUE ses données personnelles (nom, photo, statut en ligne)
+      allow update: if isAdmin() || (
+        isAuthenticated() && request.auth.uid == uid && hasNoRestrictedDriverFieldModifications()
+      );
+
+      // Suppression : réservée aux administrateurs
+      allow delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // COLLECTION : adminLogs (Journal d'audit inaltérable)
+    // =========================================================================
+    // Append-only : création par l'admin, aucune modification ou suppression possible
+    match /adminLogs/{logId} {
+      allow read, list: if isAdmin();
+      allow create: if isAdmin() &&
+        request.resource.data.adminId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // =========================================================================
+    // COLLECTION : driverCodes (Réservation unique des codes GNG-XXXXXX)
+    // =========================================================================
+    match /driverCodes/{code} {
+      allow get: if isAuthenticated();
+      allow list: if isAdmin();
+      // Création réservée à l'inscription chauffeur avec respect strict du format Dabou
+      allow create: if isAuthenticated() &&
+        request.resource.data.uid == request.auth.uid &&
+        code.matches('^GNG-[A-HJ-KM-NP-Z2-9]{6}$');
+      allow update, delete: if false;
+    }
+
+    // =========================================================================
+    // COLLECTION : settings (Configuration globale de la plateforme Dabou)
+    // =========================================================================
+    match /settings/{docId} {
+      allow read, get: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // COLLECTION : rides (Courses Allô Dabou)
+    // =========================================================================
+    match /rides/{rideId} {
+      // Seuls les chauffeurs agréés (isApprovedDriver == true) peuvent lire les courses disponibles et y répondre
+      allow read: if isAuthenticated() && (
+        resource.data.clientId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        (resource.data.status == 'pending' && isApprovedDriver()) ||
+        isAdmin()
+      );
+
+      allow create: if isAuthenticated();
+
+      allow update: if isAuthenticated() && (
+        resource.data.clientId == request.auth.uid ||
+        resource.data.driverId == request.auth.uid ||
+        (resource.data.status == 'pending' && isApprovedDriver()) ||
+        isAdmin()
+      );
+
+      allow delete: if isAdmin();
+    }
+  }
+}

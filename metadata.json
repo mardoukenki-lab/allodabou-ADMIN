@@ -1,0 +1,6 @@
+{
+  "name": "Allô Dabou Admin",
+  "description": "Application PWA d'administration pour la réception et la validation des candidatures des chauffeurs Allô Dabou.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0D631B" />
+      <stop offset="100%" stop-color="#083E11" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCD34D" />
+      <stop offset="100%" stop-color="#F59E0B" />
+    </linearGradient>
+  </defs>
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" rx="128" fill="url(#grad)" />
+  
+  <!-- Outer Shield contour -->
+  <path d="M256 70 C340 70 410 110 410 180 C410 320 280 410 256 440 C232 410 102 320 102 180 C102 110 172 70 256 70 Z" fill="none" stroke="#FFFFFF" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" opacity="0.9"/>
+  
+  <!-- Inner Shield Glow -->
+  <path d="M256 94 C324 94 386 128 386 186 C386 304 276 384 256 410 C236 384 126 304 126 186 C126 128 188 94 256 94 Z" fill="#0E7822" opacity="0.4" />
+
+  <!-- Car / Shield symbol -->
+  <g transform="translate(156, 170) scale(0.8)">
+    <!-- Car body -->
+    <rect x="20" y="90" width="210" height="70" rx="20" fill="#FFFFFF"/>
+    <!-- Car roof -->
+    <path d="M55 90 L85 30 L165 30 L195 90 Z" fill="#FFFFFF"/>
+    <!-- Windows -->
+    <polygon points="90,38 120,38 120,84 65,84" fill="#0D631B"/>
+    <polygon points="130,38 160,38 185,84 130,84" fill="#0D631B"/>
+    <!-- Wheels -->
+    <circle cx="70" cy="160" r="28" fill="#1F2937" stroke="#FCD34D" stroke-width="8"/>
+    <circle cx="180" cy="160" r="28" fill="#1F2937" stroke="#FCD34D" stroke-width="8"/>
+    <!-- Headlight -->
+    <circle cx="220" cy="115" r="10" fill="#FCD34D"/>
+  </g>
+
+  <!-- Admin Verification Badge (Checkmark in gold star/circle) -->
+  <circle cx="340" cy="330" r="60" fill="url(#gold)" stroke="#FFFFFF" stroke-width="8"/>
+  <path d="M318 330 L334 346 L366 314" fill="none" stroke="#0D631B" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

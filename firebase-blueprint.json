@@ -1,0 +1,179 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil utilisateur Chauffeur ou Client dans Allô Dabou",
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "description": "Nom complet du chauffeur ou client",
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "description": "Adresse e-mail du compte"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Numéro de téléphone (+225)",
+          "maxLength": 20
+        },
+        "role": {
+          "type": "string",
+          "enum": ["client", "driver_pending", "driver", "admin"],
+          "description": "Rôle dans la plateforme"
+        },
+        "isApprovedDriver": {
+          "type": "boolean",
+          "description": "Indicateur d'approbation officiel pour la conduite"
+        },
+        "approved": {
+          "type": "boolean",
+          "description": "Indicateur d'approbation alternatif"
+        },
+        "vehicleType": {
+          "type": "string",
+          "enum": ["moto", "voiture"],
+          "description": "Type de véhicule utilisé à Dabou"
+        },
+        "vehicleNumber": {
+          "type": "string",
+          "description": "Plaque d'immatriculation du véhicule",
+          "maxLength": 25
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "URL de la photo de profil du chauffeur"
+        },
+        "isOnline": {
+          "type": "boolean",
+          "description": "Statut de disponibilité en ligne pour les courses"
+        },
+        "driverCode": {
+          "type": "string",
+          "pattern": "^GNG-[A-HJ-KM-NP-Z2-9]{6}$",
+          "description": "Identifiant unique et immuable du chauffeur GNANGO"
+        },
+        "hasLicense": {
+          "type": "boolean",
+          "description": "Indique si le chauffeur est titulaire d'un permis de conduire"
+        },
+        "applicationStatus": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected", "suspended"],
+          "description": "Statut administratif du dossier"
+        },
+        "rejectionReason": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Motif officiel de refus communiqué au chauffeur"
+        },
+        "suspensionReason": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Motif de suspension temporaire"
+        },
+        "adminNote": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Note interne réservée aux administrateurs"
+        },
+        "cardType": {
+          "type": "string",
+          "enum": ["provisional_qr", "standard"],
+          "description": "Type de carte d'identification délivrée"
+        },
+        "cardNumber": {
+          "type": "string",
+          "description": "Numéro de la carte (identique au driverCode)"
+        }
+      },
+      "required": ["displayName", "phone", "role"]
+    },
+    "AdminLog": {
+      "title": "AdminLog",
+      "description": "Entrée inaltérable du journal d'audit administratif",
+      "type": "object",
+      "properties": {
+        "driverId": {
+          "type": "string",
+          "description": "UID du chauffeur concerné"
+        },
+        "driverName": {
+          "type": "string",
+          "description": "Nom du chauffeur au moment de la décision"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["approve", "reject", "suspend", "reactivate", "note", "card_standard"],
+          "description": "Action effectuée"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Motif ou commentaire de la décision"
+        },
+        "adminId": {
+          "type": "string",
+          "description": "UID de l'administrateur"
+        },
+        "adminEmail": {
+          "type": "string",
+          "description": "Email de l'administrateur"
+        }
+      },
+      "required": ["driverId", "action", "adminId", "adminEmail"]
+    },
+    "DriverCode": {
+      "title": "DriverCode",
+      "description": "Réservation unique du code chauffeur",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "UID du chauffeur propriétaire"
+        }
+      },
+      "required": ["uid"]
+    },
+    "GnangoSettings": {
+      "title": "GnangoSettings",
+      "description": "Configuration globale du dispositif GNANGO Dabou",
+      "type": "object",
+      "properties": {
+        "cardValidityMonths": {
+          "type": "number",
+          "description": "Durée de validité en mois de la carte provisoire"
+        },
+        "licenseRequired": {
+          "type": "boolean",
+          "description": "Exigence stricte du permis pour valider un dossier"
+        },
+        "renewalAlertDays": {
+          "type": "number",
+          "description": "Jours avant expiration pour déclencher l'alerte"
+        }
+      },
+      "required": ["cardValidityMonths", "licenseRequired", "renewalAlertDays"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "UserProfile" },
+      "description": "Collection des profils utilisateurs"
+    },
+    "/adminLogs/{logId}": {
+      "schema": { "$ref": "AdminLog" },
+      "description": "Journal inaltérable des actions administratives"
+    },
+    "/driverCodes/{code}": {
+      "schema": { "$ref": "DriverCode" },
+      "description": "Registre des codes uniques de chauffeurs GNG-XXXXXX"
+    },
+    "/settings/{docId}": {
+      "schema": { "$ref": "GnangoSettings" },
+      "description": "Configuration administrative globale"
+    }
+  }
+}
