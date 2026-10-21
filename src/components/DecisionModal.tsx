@@ -15,6 +15,8 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
+import { useDrivers } from '../context/DriversContext';
+
 interface DecisionModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -55,9 +57,11 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
   cardValidityMonths,
 }) => {
   const isOnline = useOnlineStatus();
+  const { settings } = useDrivers();
   const [reason, setReason] = useState('');
   const [adminNote, setAdminNote] = useState('');
   const [hasLicense, setHasLicense] = useState<boolean>(driver?.hasLicense ?? false);
+  const [confirmActiveRideOverride, setConfirmActiveRideOverride] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeRideInfo, setActiveRideInfo] = useState<{ id: string; status: string } | null>(null);
@@ -113,6 +117,16 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
 
     if ((isReject || isSuspend) && reason.trim().length < 10) {
       setError('Le motif est obligatoire et doit comporter au moins 10 caractères.');
+      return;
+    }
+
+    if (isApprove && settings.licenseRequired && !hasLicense) {
+      setError('Conformément aux paramètres d’Allô Dabou, le permis de conduire est obligatoire. Vous ne pouvez pas approuver sans permis.');
+      return;
+    }
+
+    if (isSuspend && activeRideInfo && !confirmActiveRideOverride) {
+      setError('Veuillez cocher la case de confirmation expresse pour suspendre le chauffeur avec course en cours.');
       return;
     }
 
@@ -211,6 +225,16 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
               </label>
             </div>
 
+            {/* Alerte si le permis est configuré obligatoire */}
+            {settings.licenseRequired && !hasLicense && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  <strong>Règle stricte Dabou :</strong> Le permis de conduire est actuellement obligatoire dans les paramètres de la plateforme. Vous devez impérativement vérifier et cocher « Permis de conduire présenté » pour approuver ce chauffeur.
+                </span>
+              </div>
+            )}
+
             {/* Carte d'identification qui sera délivrée */}
             <div className="p-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 flex items-start gap-3">
               <CreditCard className="w-5 h-5 text-[#0D631B] shrink-0 mt-0.5" />
@@ -300,6 +324,17 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
                 <p className="mt-1 text-[11px] text-red-700">
                   La suspension prendra effet immédiatement pour les futures courses mais <strong>ne coupera pas la course actuelle</strong> afin de garantir la sécurité et la prise en charge du client Allô Dabou.
                 </p>
+                <label className="flex items-start gap-2.5 mt-2.5 pt-2 border-t border-red-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={confirmActiveRideOverride}
+                    onChange={(e) => setConfirmActiveRideOverride(e.target.checked)}
+                    className="mt-0.5 rounded text-red-600 focus:ring-red-500"
+                  />
+                  <span className="text-[11px] font-bold text-red-900 select-none">
+                    Je confirme la suspension immédiate du chauffeur malgré la course active en cours.
+                  </span>
+                </label>
               </div>
             )}
 
@@ -327,7 +362,9 @@ export const DecisionModal: React.FC<DecisionModalProps> = ({
             disabled={
               isSubmitting ||
               !isOnline ||
-              ((isReject || isSuspend) && reason.trim().length < 10)
+              ((isReject || isSuspend) && reason.trim().length < 10) ||
+              (isApprove && settings.licenseRequired && !hasLicense) ||
+              (isSuspend && activeRideInfo !== null && !confirmActiveRideOverride)
             }
             className={`flex-1 min-h-[44px] py-3 px-4 rounded-2xl font-semibold text-sm text-white shadow-md flex items-center justify-center gap-2 transition-all ${
               isApprove

@@ -76,8 +76,8 @@ export const FCMConfigCard: React.FC = () => {
   // Test de la notification push
   const handleTestNotification = () => {
     playNotificationSound();
-    showLocalNotification('Candidature reçue (Test Dabou)', {
-      body: 'Chauffeur Kouassi Yao (Voiture) a déposé sa candidature pour Dabou.',
+    showLocalNotification('Notification de test Allô Dabou', {
+      body: 'Le système d’alerte push FCM et le carillon sont opérationnels sur ce terminal.',
       tag: 'test-driver-alert',
     });
     setStatusMessage('Carillon audio joué et notification push envoyée !');

@@ -6,25 +6,33 @@ service cloud.firestore {
     // HELPER FUNCTIONS & SÉCURITÉ ALLÔ DABOU
     // =========================================================================
 
-    // Vérifie si l'utilisateur est authentifié
+    // Vérifie si l'utilisateur est authentifié avec Firebase Auth
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Vérifie si l'utilisateur est le Super Administrateur désigné
-    function isSuperAdminEmail() {
+    // C1: Vérifie si l'utilisateur est le Super Administrateur (custom claim ou email autorisé)
+    function isSuperAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == 'mardoukeni@gmail.com' ||
-        request.auth.token.email == 'mardoukenki@gmail.com'
+        (request.auth.token.keys().hasAny(['superAdmin']) && request.auth.token.superAdmin == true) ||
+        (request.auth.token.email in ['mardoukeni@gmail.com', 'mardoukenki@gmail.com'])
       );
     }
 
-    // Vérifie si l'utilisateur a le rôle administrateur (Super Admin, Token Claim OU existence de admins/{uid})
+    // Vérifie si l'utilisateur est membre de l'équipe administrative
     function isAdmin() {
-      return isAuthenticated() && (
-        isSuperAdminEmail() ||
-        (request.auth.token.keys().hasAny(['role']) && request.auth.token.role == 'admin') ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      return isSuperAdmin() || (
+        isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // C4: Vérifie si l'administrateur dispose des pleins pouvoirs d'écriture
+    // Exclut le rôle restreint 'dispatch' qui n'a qu'un rôle de consultation et contact terrain
+    function isFullAdmin() {
+      return isSuperAdmin() || (
+        isAdmin() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role in ['admin', 'super_admin']
       );
     }
 
@@ -35,7 +43,7 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isApprovedDriver == true;
     }
 
-    // Liste des champs réservés et immuables pour un utilisateur standard
+    // Liste des champs sensibles et immuables pour un utilisateur standard non admin
     function hasNoRestrictedDriverFieldModifications() {
       let forbiddenFields = [
         'role',
@@ -62,56 +70,74 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // COLLECTION : admins
+    // COLLECTION : admins (Gestion de l'équipe administrative)
     // =========================================================================
-    // Le Super Administrateur peut gérer (créer, lister, supprimer) jusqu'à 5 administrateurs.
-    // Chaque admin peut également mettre à jour ses jetons fcmTokens.
+    // Seul le Super Administrateur peut ajouter ou révoquer des administrateurs
     match /admins/{uid} {
       allow get: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
-      allow create, delete: if isSuperAdminEmail();
-      allow update: if isSuperAdminEmail() || (
+      allow create, delete: if isSuperAdmin();
+      allow update: if isSuperAdmin() || (
         isAuthenticated() && request.auth.uid == uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens', 'lastSeenAt'])
       );
     }
 
     // =========================================================================
-    // COLLECTION : users (Clients, Chauffeurs en attente, Chauffeurs agréés)
+    // COLLECTION : users (Profils chauffeurs et clients)
     // =========================================================================
     match /users/{uid} {
-      // Lecture individuelle par tout utilisateur connecté
-      allow get: if isAuthenticated();
+      // C2: Un utilisateur ne peut lire QUE son propre profil, sauf les admins
+      allow get: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
 
-      // Liste des profils : réservée aux administrateurs
+      // Seuls les administrateurs peuvent lister l'ensemble des profils
       allow list: if isAdmin();
 
-      // Création : par l'utilisateur lui-même à l'inscription (statut initial pending forcé)
-      allow create: if isAuthenticated() && request.auth.uid == uid &&
-        request.resource.data.role in ['client', 'driver_pending'] &&
-        (!('applicationStatus' in request.resource.data) || request.resource.data.applicationStatus == 'pending') &&
-        (!('isApprovedDriver' in request.resource.data) || request.resource.data.isApprovedDriver == false) &&
-        (!('approved' in request.resource.data) || request.resource.data.approved == false);
+      // C3: Création strictement contrainte à l'inscription (interdiction d'auto-attribution de carte ou statut)
+      allow create: if isAuthenticated() && request.auth.uid == uid
+        && request.resource.data.role in ['client', 'driver_pending']
+        && request.resource.data.get('applicationStatus', 'pending') == 'pending'
+        && request.resource.data.get('isApprovedDriver', false) == false
+        && request.resource.data.get('approved', false) == false
+        && !request.resource.data.keys().hasAny([
+          'cardType', 'cardNumber', 'cardValidFrom', 'cardValidUntil',
+          'reviewedBy', 'reviewedAt', 'adminNote', 'rejectionReason', 'suspensionReason'
+        ]);
 
-      // Mise à jour :
-      // - L'admin peut tout modifier (approbation, refus, checklist, notes)
-      // - Le propriétaire du compte ne peut modifier QUE ses données personnelles (nom, photo, statut en ligne)
-      allow update: if isAdmin() || (
+      // C4: Seuls les admins avec pleins pouvoirs (isFullAdmin) peuvent modifier les statuts ou notes
+      // Le chauffeur/client ne peut modifier que ses données non sensibles (nom, téléphone, photo, etc.)
+      allow update: if isFullAdmin() || (
         isAuthenticated() && request.auth.uid == uid && hasNoRestrictedDriverFieldModifications()
       );
 
-      // Suppression : réservée aux administrateurs
-      allow delete: if isAdmin();
+      // Suppression réservée aux administrateurs avec pleins pouvoirs
+      allow delete: if isFullAdmin();
     }
 
     // =========================================================================
-    // COLLECTION : adminLogs (Journal d'audit inaltérable)
+    // COLLECTION : publicDrivers/{code} (H1: Vérification publique du QR Code)
     // =========================================================================
-    // Append-only : création par l'admin, aucune modification ou suppression possible
+    // Permet aux policiers, autorités municipales et clients de vérifier la validité
+    // d'un chauffeur par scan de QR code SANS avoir besoin d'être authentifié.
+    match /publicDrivers/{code} {
+      // Lecture individuelle publique autorisée (scan QR sans compte)
+      allow get: if true;
+      // Listage en masse formellement interdit pour éviter tout moissonnage
+      allow list: if false;
+      // Écriture réservée exclusivement aux administrateurs habilités
+      allow write: if isFullAdmin();
+    }
+
+    // =========================================================================
+    // COLLECTION : adminLogs (H5: Journal d'audit inaltérable et vérifié)
+    // =========================================================================
     match /adminLogs/{logId} {
       allow read, list: if isAdmin();
-      allow create: if isAdmin() &&
-        request.resource.data.adminId == request.auth.uid;
+      allow create: if isFullAdmin()
+        && request.resource.data.adminId == request.auth.uid
+        && request.resource.data.adminEmail == request.auth.token.email
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.action in ['approve', 'reject', 'suspend', 'reactivate', 'card_standard', 'note', 'delete_admin', 'create_admin'];
       allow update, delete: if false;
     }
 
@@ -121,11 +147,10 @@ service cloud.firestore {
     match /driverCodes/{code} {
       allow get: if isAuthenticated();
       allow list: if isAdmin();
-      // Création réservée à l'inscription chauffeur avec respect strict du format Dabou
       allow create: if isAuthenticated() &&
         request.resource.data.uid == request.auth.uid &&
         code.matches('^GNG-[A-HJ-KM-NP-Z2-9]{6}$');
-      allow update, delete: if false;
+      allow update, delete: if isFullAdmin();
     }
 
     // =========================================================================
@@ -133,14 +158,13 @@ service cloud.firestore {
     // =========================================================================
     match /settings/{docId} {
       allow read, get: if true;
-      allow write: if isAdmin();
+      allow write: if isFullAdmin();
     }
 
     // =========================================================================
-    // COLLECTION : rides (Courses Allô Dabou)
+    // COLLECTION : rides (C5: Sécurisation des courses contre la fraude)
     // =========================================================================
     match /rides/{rideId} {
-      // Seuls les chauffeurs agréés (isApprovedDriver == true) peuvent lire les courses disponibles et y répondre
       allow read: if isAuthenticated() && (
         resource.data.clientId == request.auth.uid ||
         resource.data.driverId == request.auth.uid ||
@@ -148,16 +172,20 @@ service cloud.firestore {
         isAdmin()
       );
 
-      allow create: if isAuthenticated();
+      // Création : le client authentifié ne peut créer qu'une course avec son propre identifiant
+      allow create: if isAuthenticated() &&
+        request.resource.data.clientId == request.auth.uid &&
+        request.resource.data.get('status', 'pending') == 'pending';
 
+      // Mise à jour : transitions contrôlées (client, chauffeur de la course ou admin)
       allow update: if isAuthenticated() && (
         resource.data.clientId == request.auth.uid ||
         resource.data.driverId == request.auth.uid ||
         (resource.data.status == 'pending' && isApprovedDriver()) ||
-        isAdmin()
+        isFullAdmin()
       );
 
-      allow delete: if isAdmin();
+      allow delete: if isFullAdmin();
     }
   }
 }

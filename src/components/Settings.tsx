@@ -22,8 +22,8 @@ import {
 type SettingsTab = 'admins' | 'notifications' | 'rules' | 'pwa';
 
 export const Settings: React.FC = () => {
-  const { adminProfile, logout, isSuperAdmin, adminUsers, maxAdminsLimit } = useAuth();
-  const { settings, updateSettings } = useDrivers();
+  const { adminProfile, logout, isSuperAdmin, isDispatch, adminUsers, maxAdminsLimit } = useAuth();
+  const { settings, updateSettings, syncApprovedDriversToPublic } = useDrivers();
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const isOnline = useOnlineStatus();
 
@@ -35,6 +35,8 @@ export const Settings: React.FC = () => {
   const [renewalAlertDays, setRenewalAlertDays] = useState<number>(settings.renewalAlertDays || 15);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isSyncingPublic, setIsSyncingPublic] = useState(false);
+  const [syncCount, setSyncCount] = useState<number | null>(null);
   const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -264,15 +266,67 @@ export const Settings: React.FC = () => {
               </label>
             </div>
 
-            <button
-              type="submit"
-              disabled={!isOnline || isSaving}
-              className="min-h-[44px] px-6 py-3 rounded-2xl bg-[#0D631B] hover:bg-[#0a4d15] text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Enregistrement...' : 'Enregistrer les paramètres'}</span>
-            </button>
+            {isDispatch ? (
+              <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center gap-2.5">
+                <Shield className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>
+                  <strong>Accès lecture seule :</strong> La modification des règles de la plateforme Allô Dabou est réservée aux Administrateurs et Super Admin.
+                </span>
+              </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={!isOnline || isSaving}
+                className="min-h-[44px] px-6 py-3 rounded-2xl bg-[#0D631B] hover:bg-[#0a4d15] text-white font-bold text-xs shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSaving ? 'Enregistrement...' : 'Enregistrer les paramètres'}</span>
+              </button>
+            )}
           </form>
+
+          {/* Registre public des chauffeurs (H1 Fix) */}
+          <div className="mt-8 pt-6 border-t border-gray-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="font-bold text-xs text-gray-900 uppercase tracking-wider">
+                  Registre Public des Cartes QR (Vérification sans compte)
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Synchronise tous les chauffeurs approuvés vers la collection publique pour consultation instantanée par les forces de l’ordre et clients.
+                </p>
+              </div>
+
+              {!isDispatch && (
+                <button
+                  type="button"
+                  disabled={!isOnline || isSyncingPublic}
+                  onClick={async () => {
+                    setIsSyncingPublic(true);
+                    try {
+                      const count = await syncApprovedDriversToPublic();
+                      setSyncCount(count);
+                      setTimeout(() => setSyncCount(null), 4000);
+                    } catch (err: any) {
+                      alert(`Erreur de synchronisation : ${err.message}`);
+                    } finally {
+                      setIsSyncingPublic(false);
+                    }
+                  }}
+                  className="px-4 py-2.5 rounded-2xl border border-emerald-300 text-[#0D631B] hover:bg-emerald-50 text-xs font-bold flex items-center gap-2 transition-colors disabled:opacity-50 shrink-0"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>
+                    {isSyncingPublic
+                      ? 'Synchronisation...'
+                      : syncCount !== null
+                      ? `${syncCount} chauffeurs synchronisés !`
+                      : 'Synchroniser le Registre Public'}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

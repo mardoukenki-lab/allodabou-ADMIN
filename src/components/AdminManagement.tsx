@@ -23,8 +23,16 @@ import {
 } from 'lucide-react';
 
 export const AdminManagement: React.FC = () => {
-  const { adminProfile, isSuperAdmin, adminUsers, adminUsersLoading, addAdminUser, removeAdminUser, maxAdminsLimit } =
-    useAuth();
+  const {
+    adminProfile,
+    isSuperAdmin,
+    adminUsers,
+    adminUsersLoading,
+    addAdminUser,
+    removeAdminUser,
+    maxAdminsLimit,
+    resetPassword,
+  } = useAuth();
   const isOnline = useOnlineStatus();
 
   // Modals & form state
@@ -45,6 +53,7 @@ export const AdminManagement: React.FC = () => {
     password: string;
   } | null>(null);
   const [copiedSuccess, setCopiedSuccess] = useState(false);
+  const [inviteEmailSent, setInviteEmailSent] = useState(false);
 
   // Revoke confirmation modal
   const [adminToRevoke, setAdminToRevoke] = useState<AdminUser | null>(null);
@@ -58,12 +67,13 @@ export const AdminManagement: React.FC = () => {
 
   // Générateur de mot de passe fort
   const handleGeneratePassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
-    let generated = 'Dabou';
-    for (let i = 0; i < 5; i++) {
-      generated += chars.charAt(Math.floor(Math.random() * chars.length));
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
+    const array = new Uint8Array(12);
+    crypto.getRandomValues(array);
+    let generated = '';
+    for (let i = 0; i < 12; i++) {
+      generated += chars.charAt(array[i] % chars.length);
     }
-    generated += '!26';
     setPassword(generated);
     setConfirmPassword(generated);
   };
@@ -84,8 +94,8 @@ export const AdminManagement: React.FC = () => {
       setFormError('Veuillez remplir tous les champs obligatoires.');
       return;
     }
-    if (password.length < 6) {
-      setFormError('Le mot de passe doit comporter au moins 6 caractères.');
+    if (password.length < 8) {
+      setFormError('Pour la sécurité de la plateforme, le mot de passe doit comporter au moins 8 caractères.');
       return;
     }
     if (password !== confirmPassword) {
@@ -352,7 +362,7 @@ export const AdminManagement: React.FC = () => {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: Kouamé Jean - Dispatch Dabou"
+                    placeholder="Nom complet de l’administrateur"
                     className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl text-sm text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0D631B]"
                   />
                 </div>
@@ -528,12 +538,37 @@ export const AdminManagement: React.FC = () => {
 
             <div className="space-y-2">
               <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await resetPassword(createdAdminData.email);
+                    setInviteEmailSent(true);
+                    setTimeout(() => setInviteEmailSent(false), 4000);
+                  } catch (err: any) {
+                    console.warn('[AdminManagement] Erreur reset email:', err);
+                  }
+                }}
+                className="w-full py-2.5 px-4 rounded-2xl border border-emerald-300 text-[#0D631B] hover:bg-emerald-50 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+              >
+                <Mail className="w-4 h-4" />
+                <span>
+                  {inviteEmailSent
+                    ? 'E-mail de réinitialisation/invitation envoyé !'
+                    : 'Envoyer lien officiel de configuration par e-mail'}
+                </span>
+              </button>
+
+              <button
                 onClick={handleCopyCredentials}
                 className="w-full py-3 px-4 rounded-2xl bg-[#0D631B] hover:bg-[#0a4d15] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all"
               >
                 {copiedSuccess ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 <span>{copiedSuccess ? 'Message copié dans le presse-papiers !' : 'Copier pour WhatsApp / SMS'}</span>
               </button>
+
+              <p className="text-[10px] text-gray-400 text-center">
+                Recommandation sécurité : invitez l'administrateur à modifier son mot de passe dès sa première connexion.
+              </p>
 
               <button
                 onClick={() => setCreatedAdminData(null)}

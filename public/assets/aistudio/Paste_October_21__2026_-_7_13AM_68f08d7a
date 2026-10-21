@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rapport d’audit – Allô Dabou Admin</title>
+<style>
+:root{--bg:#f8faf8;--card:#fff;--tx:#14201a;--mu:#5b6b62;--bd:#dfe7e1;--g:#0d631b;--c:#b42318;--h:#c2570c;--m:#a16207;--l:#475569;--code:#0f1a14;--codetx:#d7f5dd}
+@media(prefers-color-scheme:dark){:root{--bg:#0e1511;--card:#16201a;--tx:#e6efe9;--mu:#9bb0a3;--bd:#27352c;--g:#4ade80;--c:#f87171;--h:#fb923c;--m:#facc15;--l:#94a3b8}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{max-width:920px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:20px;margin:40px 0 12px;border-bottom:2px solid var(--g);padding-bottom:6px}h3{font-size:16px;margin:0}
+.mu{color:var(--mu)}.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.kpi{text-align:center;padding:12px}.kpi b{font-size:28px;display:block}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;color:#fff;margin-right:8px;vertical-align:middle}
+.C{background:var(--c)}.H{background:var(--h)}.M{background:var(--m)}.L{background:var(--l)}
+.f{border-left:5px solid var(--bd)}.f.C{border-left-color:var(--c);background:var(--card)}.f.H{border-left-color:var(--h);background:var(--card)}.f.M{border-left-color:var(--m);background:var(--card)}.f.L{border-left-color:var(--l);background:var(--card)}
+.ev{font-size:13px;color:var(--mu);margin:6px 0}.fix{background:rgba(13,99,27,.08);border-radius:8px;padding:10px 12px;margin-top:8px}
+code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px}p code,li code{background:rgba(127,127,127,.15);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);color:var(--codetx);padding:12px;border-radius:8px;overflow-x:auto;margin:8px 0}
+.ok{color:var(--g);font-weight:600}
+ul{padding-left:20px;margin:6px 0}li{margin:3px 0}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{border-bottom:1px solid var(--bd);padding:8px;text-align:left;vertical-align:top}
+.bar{height:12px;background:var(--bd);border-radius:99px;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--g);transition:width .3s}
+label.ck{display:flex;gap:10px;align-items:flex-start;padding:6px 0;cursor:pointer}label.ck input{margin-top:5px;accent-color:var(--g)}
+.wrap{overflow-x:auto}
+</style>
+</head>
+<body>
+<main>
+<h1>Rapport d’audit – Allô Dabou Admin</h1>
+<p class="mu">Revue statique du code source (archive de 59 fichiers) · 21/10/2026 · Application PWA React + Firebase (Auth, Firestore, FCM)</p>
+
+<div class="card">
+<h3>Périmètre et limites (à lire)</h3>
+<p>Ce rapport repose uniquement sur la <b>lecture du code</b> : <code>firestore.rules</code>, <code>AuthContext</code>, <code>DriversContext</code>, composants, service worker, configuration Vite/PWA. Je n’ai <b>pas</b> exécuté le build, ni <code>npm audit</code>, ni testé les règles dans l’émulateur, et je n’ai pas accès à votre console Firebase. Chaque constat est donc marqué <span class="ok">Vérifié dans le code</span> ou <b>À confirmer en console</b>. Je ne peux pas confirmer que les règles déployées sont identiques au fichier fourni.</p>
+</div>
+
+<div class="grid">
+<div class="card kpi"><b style="color:var(--c)">5</b>Critiques</div>
+<div class="card kpi"><b style="color:var(--h)">6</b>Élevés</div>
+<div class="card kpi"><b style="color:var(--m)">5</b>Moyens</div>
+<div class="card kpi"><b style="color:var(--l)">4</b>Faibles</div>
+</div>
+
+<div class="card">
+<h3>Ce qui est solide</h3>
+<ul>
+<li>Actions de décision (approuver, refuser, suspendre, réactiver) en <code>writeBatch</code> avec écriture du journal dans la même transaction.</li>
+<li>Champs sensibles du chauffeur protégés en mise à jour (<code>hasNoRestrictedDriverFieldModifications</code>) ; <code>adminLogs</code> en ajout seul (<code>update, delete: if false</code>).</li>
+<li>Création d’admin via une 2<sup>e</sup> instance Auth, sans déconnecter le Super Admin ; motifs de refus/suspension obligatoires (10 caractères min.).</li>
+<li>Format <code>GNG-XXXXXX</code> cohérent entre le code client et la regex des règles.</li>
+</ul>
+</div>
+
+<h2>1. Constats critiques</h2>
+
+<div class="card f C">
+<h3><span class="tag C">C1</span>Super Admin identifié par e-mail non vérifié</h3>
+<div class="ev"><span class="ok">Vérifié dans le code</span> · <code>firestore.rules</code> (<code>isSuperAdminEmail</code>), <code>AuthContext.tsx</code> (<code>SUPER_ADMIN_EMAILS</code>)</div>
+<p>Les règles comparent seulement <code>request.auth.token.email</code>. Or Firebase fournit un champ distinct <code>email_verified</code> (source : <a href="https://firebase.google.com/docs/rules/rules-and-auth?hl=fr">documentation Firebase – Règles et Authentication</a>). Les deux adresses (<code>mardoukeni@…</code> et <code>mardoukenki@…</code>, une seule lettre d’écart) sont codées en dur. Si l’une n’a jamais été créée dans Auth, <b>n’importe qui peut s’inscrire avec cette adresse</b> (l’inscription e-mail/mot de passe est ouverte pour l’app Chauffeur) et obtenir tous les droits. <b>À confirmer en console</b> : lesquelles existent réellement.</p>
+<div class="fix"><b>Correctif</b> : (1) Console Firebase → Authentication : vérifier que les deux comptes existent ou supprimer l’adresse inutile du code ; (2) ajouter <code>request.auth.token.email_verified == true</code> (voir bloc de règles §3) ; (3) mieux : attribuer un <i>custom claim</i> <code>superAdmin</code> via le Admin SDK et tester <code>request.auth.token.superAdmin == true</code> ; (4) supprimer <code>registerSuperAdmin</code> d’AuthContext (jamais appelée par l’interface, vérifié par recherche).</div>
+</div>
+
+<div class="card f C">
+<h3><span class="tag C">C2</span>Tout utilisateur connecté peut lire n’importe quel profil</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>firestore.rules</code> : <code>match /users/{uid} { allow get: if isAuthenticated(); }</code></div>
+<p>Un client ou un chauffeur peut lire, par UID, les données personnelles d’un autre (téléphone, e-mail, plaque, note interne <code>adminNote</code>, checklist). Le <code>list</code> est restreint, pas le <code>get</code>.</p>
+<div class="fix"><b>Correctif</b> : <code>allow get: if isAuthenticated() &amp;&amp; (request.auth.uid == uid || isAdmin());</code>. Déplacer <code>adminNote</code> dans une sous-collection <code>users/{uid}/private/admin</code> lisible par les admins seulement.</div>
+</div>
+
+<div class="card f C">
+<h3><span class="tag C">C3</span>Création de profil non contrainte (auto-attribution de carte et de code)</h3>
+<div class="ev"><span class="ok">Vérifié</span> · règle <code>allow create</code> de <code>users</code></div>
+<p>Seuls <code>role</code>, <code>applicationStatus</code>, <code>isApprovedDriver</code> et <code>approved</code> sont contrôlés. Un candidat peut créer son profil avec <code>cardType: 'standard'</code>, <code>cardValidUntil</code> lointain, <code>reviewedBy</code>, ou le <code>driverCode</code> d’un autre chauffeur. Comme <code>PublicVerifier</code> prend <code>snap.docs[0]</code>, un doublon de code peut usurper l’identité d’un chauffeur.</p>
+<div class="fix"><b>Correctif</b> : liste noire de champs à la création + vérification que <code>driverCodes/{code}.uid == auth.uid</code> via <code>existsAfter/getAfter</code> (le lot <code>writeBatch</code> du patch chauffeur l’écrit déjà atomiquement). Voir §3.</div>
+</div>
+
+<div class="card f C">
+<h3><span class="tag C">C4</span>Le rôle « Dispatch » n’est appliqué nulle part</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>isAdmin()</code> = existence de <code>admins/{uid}</code> ; aucun test de <code>dispatch</code> dans DriverDetail, DecisionModal ou Settings</div>
+<p>Le README promet « consultation, contact terrain » pour Dispatch. En réalité un agent Dispatch peut approuver, suspendre, supprimer des profils et modifier <code>settings</code>, depuis l’interface <b>et</b> directement via l’API.</p>
+<div class="fix"><b>Correctif</b> : fonction <code>isFullAdmin()</code> (rôle <code>admin</code> ou <code>super_admin</code>) pour toutes les écritures ; côté UI, masquer les boutons d’action si <code>adminProfile.role === 'dispatch'</code>.</div>
+</div>
+
+<div class="card f C">
+<h3><span class="tag C">C5</span>Les règles Firestore partagées permettent la fraude sur les courses</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>match /rides/{rideId}</code></div>
+<p><code>create</code> : tout utilisateur connecté, sans validation de champs. <code>update</code> : le client ou le chauffeur peut modifier n’importe quel champ (prix, statut, <code>driverId</code>). Comme la base est commune aux trois applications, ce fichier de règles les protège toutes. <b>À confirmer</b> : les règles réellement déployées sur la base.</p>
+<div class="fix"><b>Correctif</b> : à la création, imposer <code>clientId == auth.uid</code>, <code>status == 'pending'</code> et la liste exacte de champs ; en mise à jour, autoriser seulement des transitions de statut précises et interdire la modification du prix par le chauffeur.</div>
+</div>
+
+<h2>2. Constats élevés, moyens et faibles</h2>
+
+<div class="card f H"><h3><span class="tag H">H1</span>Vérification publique du QR inopérante</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>PublicVerifier.tsx</code> + règles <code>users</code> / <code>driverCodes</code></div>
+<p>La page interroge <code>users</code> avec <code>where('driverCode'…)</code> (liste = admins seulement) puis <code>driverCodes</code> (lecture = connecté). Un contrôleur non connecté obtiendra une erreur de permission, alors que le README annonce une page publique.</p>
+<div class="fix"><b>Correctif</b> : collection <code>publicDrivers/{code}</code> contenant uniquement nom, code, véhicule, statut, validité (lecture publique par <code>get</code>, <code>list</code> interdit), écrite par l’admin dans le même <code>batch</code> que chaque décision. Réécrire <code>PublicVerifier</code> avec un seul <code>getDoc</code>. Ajouter App Check pour limiter le moissonnage.</div></div>
+
+<div class="card f H"><h3><span class="tag H">H2</span>Expiration des cartes provisoires jamais appliquée</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>RenewalsList.tsx</code> ne fait qu’afficher ; aucun traitement serveur</div>
+<p>Après <code>cardValidUntil</code>, le chauffeur reste <code>isApprovedDriver: true</code> et continue de recevoir des courses.</p>
+<div class="fix"><b>Correctif</b> : Cloud Function planifiée (quotidienne, fuseau <code>Africa/Abidjan</code>) qui passe en <code>suspended</code> (motif « Carte provisoire expirée ») les profils échus, journalise, et met à jour <code>publicDrivers</code>. Décision métier à valider : délai de grâce ou non.</div></div>
+
+<div class="card f H"><h3><span class="tag H">H3</span>Aucun backend : notifications d’arrière-plan non fonctionnelles</h3>
+<div class="ev"><span class="ok">Vérifié</span> · pas de dossier <code>functions/</code> ; le README renvoie à un modèle affiché dans l’onglet FCM</div>
+<p>Sans fonction serveur, aucun message FCM n’est envoyé quand l’application est fermée : seul le carillon à l’écran (listener Firestore) marche. <b>À confirmer</b> : une fonction n’est peut-être déployée que dans un autre dépôt.</p>
+<div class="fix"><b>Correctif</b> : fonction <code>onDocumentCreated('users/{uid}')</code> qui, si <code>role == 'driver_pending'</code>, lit <code>admins.*.fcmTokens</code>, envoie via <code>sendEachForMulticast</code> et retire les jetons invalides. Étendre à la journalisation serveur (H5) et à la tâche d’expiration (H2).</div></div>
+
+<div class="card f H"><h3><span class="tag H">H4</span>Conflit probable de service workers (PWA vs FCM)</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>vite.config.ts</code> (VitePWA, scope <code>/</code>) et <code>fcm.ts</code> (<code>register('/firebase-messaging-sw.js', {scope:'/'})</code>)</div>
+<p>Un navigateur n’admet qu’un service worker par portée ; deux enregistrements au même scope se remplacent (principe général, rappelé par <a href="https://www.nuget.org/packages/FireForNet.Firebase.Messaging.Browser/">cette documentation tierce</a>). Je n’ai pas testé le comportement à l’exécution. De plus le SW charge Firebase <b>10.12.0</b> alors que l’application dépend de <b>firebase ^13</b>.</p>
+<div class="fix"><b>Correctif</b> : soit enregistrer le SW FCM avec la portée par défaut <code>/firebase-cloud-messaging-push-scope</code>, soit passer VitePWA en <code>strategy: 'injectManifest'</code> et fusionner la logique FCM dans un seul SW. Aligner les versions.</div></div>
+
+<div class="card f H"><h3><span class="tag H">H5</span>Journal d’audit contournable et falsifiable</h3>
+<div class="ev"><span class="ok">Vérifié</span> · règle <code>adminLogs</code> : seul <code>adminId == auth.uid</code> est exigé</div>
+<p>Un admin peut modifier un profil <b>sans</b> écrire de log, ou écrire un log avec un faux <code>adminEmail</code>, une action arbitraire, une date choisie. Le caractère « inaltérable » n’est donc garanti qu’après écriture.</p>
+<div class="fix"><b>Correctif</b> : valider <code>adminEmail == token.email</code>, <code>createdAt == request.time</code> et <code>action in [...]</code> (§3) ; idéalement déclencher le log depuis une Cloud Function <code>onDocumentUpdated</code> sur les champs de statut.</div></div>
+
+<div class="card f H"><h3><span class="tag H">H6</span>Gestion des comptes admin : révocation incomplète et mot de passe en clair</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>removeAdminUser</code> = <code>deleteDoc</code> seulement ; <code>AdminManagement.tsx</code> l.132 envoie le mot de passe par WhatsApp ; minimum 6 caractères</div>
+<p>Le compte Firebase Auth reste actif après « révocation » ; avec C2 il garde un accès en lecture aux profils. Les identifiants circulent en clair.</p>
+<div class="fix"><b>Correctif</b> : fonction appelable <code>revokeAdmin</code> (Admin SDK : <code>updateUser(uid,{disabled:true})</code> + <code>revokeRefreshTokens</code>). Pour l’ajout : mot de passe aléatoire non communiqué + <code>sendPasswordResetEmail</code>, 12 caractères minimum.</div></div>
+
+<div class="card f M"><h3><span class="tag M">M1</span>Approbation sans contrôle métier</h3>
+<div class="ev"><span class="ok">Vérifié</span> · aucune vérification de <code>checklist</code> dans <code>approveDriver</code> ; <code>licenseRequired</code> est enregistré (Settings) mais jamais lu ailleurs</div>
+<div class="fix"><b>Correctif</b> : dans <code>DecisionModal</code>, bloquer « Approuver » si <code>licenseRequired &amp;&amp; !hasLicense</code> et si les pièces obligatoires de la checklist ne sont pas cochées (à définir : identité, carte grise, assurance…). Doubler côté règles ou fonction.</div></div>
+
+<div class="card f M"><h3><span class="tag M">M2</span>Suspension : avertissement seulement</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>DecisionModal.tsx</code> l.78–95 : requête sur les courses actives, affichage d’une alerte, pas de blocage</div>
+<div class="fix"><b>Correctif</b> : décider de la règle métier (confirmer explicitement, ou différer la suspension à la fin de la course) et l’appliquer dans l’action, pas seulement dans l’affichage.</div></div>
+
+<div class="card f M"><h3><span class="tag M">M3</span>Aucune configuration de déploiement</h3>
+<div class="ev"><span class="ok">Vérifié</span> · absents : <code>firebase.json</code>, <code>firestore.indexes.json</code>, tests, CI</div>
+<div class="fix"><b>Correctif</b> : ajouter <code>firebase.json</code> avec rewrite <code>**</code> → <code>/index.html</code> (indispensable pour <code>/verifier/&lt;code&gt;</code>), en-têtes (CSP, <code>X-Frame-Options</code>, <code>Cache-Control: no-cache</code> sur le SW), et versionner les index. Ajouter un workflow CI : <code>tsc --noEmit</code>, build, tests de règles.</div></div>
+
+<div class="card f M"><h3><span class="tag M">M4</span>QR imprimé lié à l’hôte courant</h3>
+<div class="ev"><span class="ok">Vérifié</span> · <code>DriverCardPreview.tsx</code> l.17 : <code>window.location.origin</code> ; <code>APP_URL</code> de <code>.env.example</code> n’est lu nulle part</div>
+<div class="fix"><b>Correctif</b> : variable <code>VITE_PUBLIC_VERIFY_URL</code> fixe (domaine définitif). Un QR déjà imprimé ne peut plus être corrigé.</div></div>
+
+<div class="card f M"><h3><span class="tag M">M5</span>Hygiène du projet</h3>
+<div class="ev"><span class="ok">Vérifié</span></div>
+<ul>
+<li><code>package.json</code> : nom <code>react-example</code> ; <code>express</code>, <code>dotenv</code>, <code>@google/genai</code> sans usage dans <code>src/</code> (recherche) → à retirer (surface d’attaque) ; script <code>clean</code> supprime <code>server.js</code>.</li>
+<li><code>tsconfig.json</code> sans <code>"strict": true</code> ; 21 occurrences de <code>any</code> ; 22 appels <code>console.*</code>.</li>
+<li>E-mails Super Admin dupliqués dans 4 fichiers (règles, AuthContext, AdminManagement l.232, README).</li>
+</ul></div>
+
+<div class="card f L"><h3><span class="tag L">L1–L4</span>Points mineurs</h3>
+<ul>
+<li><b>L1</b> Clé API Firebase publique par conception : restreindre les domaines/API dans Google Cloud et activer App Check <b>(à confirmer en console)</b>.</li>
+<li><b>L2</b> Cache hors-ligne persistant (<code>persistentLocalCache</code>) : données personnelles conservées sur l’appareil après déconnexion ; appeler <code>terminate</code> + <code>clearIndexedDbPersistence</code> au logout.</li>
+<li><b>L3</b> <code>resetPassword</code> renvoie « aucun compte trouvé » : permet de deviner des comptes admin. Message neutre conseillé. Pas de MFA pour le Super Admin.</li>
+<li><b>L4</b> <code>user-scalable=no</code> / <code>maximum-scale=1</code> dans <code>index.html</code> nuit à l’accessibilité ; générer les codes <code>GNG</code> avec <code>crypto.getRandomValues</code> plutôt que <code>Math.random</code> (patch chauffeur).</li>
+</ul></div>
+
+<h2>3. Règles Firestore proposées (à tester dans l’émulateur)</h2>
+<p class="mu">Remplacent les helpers et les blocs <code>admins</code>, <code>users</code>, <code>adminLogs</code> ; ajoutent <code>publicDrivers</code>. Les blocs <code>driverCodes</code> et <code>settings</code> (écriture) passent à <code>isFullAdmin()</code>. Non exécutées ici : à valider avec <code>@firebase/rules-unit-testing</code> avant déploiement.</p>
+<div class="wrap"><pre><code>function isSuperAdmin() {
+  return isAuthenticated()
+    &amp;&amp; request.auth.token.email_verified == true
+    &amp;&amp; request.auth.token.email in ['mardoukeni@gmail.com', 'mardoukenki@gmail.com'];
+}
+function isAdmin() {
+  return isSuperAdmin()
+    || (isAuthenticated() &amp;&amp; exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+}
+function isFullAdmin() {
+  return isSuperAdmin() || (isAdmin() &amp;&amp;
+    get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role in ['admin','super_admin']);
+}
+
+match /users/{uid} {
+  allow get: if isAuthenticated() &amp;&amp; (request.auth.uid == uid || isAdmin());
+  allow list: if isAdmin();
+  allow create: if isAuthenticated() &amp;&amp; request.auth.uid == uid
+    &amp;&amp; request.resource.data.role in ['client','driver_pending']
+    &amp;&amp; request.resource.data.get('applicationStatus','pending') == 'pending'
+    &amp;&amp; request.resource.data.get('isApprovedDriver', false) == false
+    &amp;&amp; request.resource.data.get('approved', false) == false
+    &amp;&amp; !request.resource.data.keys().hasAny(['cardType','cardNumber','cardValidFrom',
+         'cardValidUntil','reviewedBy','reviewedAt','adminNote','rejectionReason','suspensionReason'])
+    &amp;&amp; (!('driverCode' in request.resource.data)
+        || (existsAfter(/databases/$(database)/documents/driverCodes/$(request.resource.data.driverCode))
+            &amp;&amp; getAfter(/databases/$(database)/documents/driverCodes/$(request.resource.data.driverCode)).data.uid == request.auth.uid));
+  allow update: if isFullAdmin()
+    || (request.auth.uid == uid &amp;&amp; hasNoRestrictedDriverFieldModifications());
+  allow delete: if isFullAdmin();
+}
+
+match /adminLogs/{logId} {
+  allow read: if isAdmin();
+  allow create: if isFullAdmin()
+    &amp;&amp; request.resource.data.adminId == request.auth.uid
+    &amp;&amp; request.resource.data.adminEmail == request.auth.token.email
+    &amp;&amp; request.resource.data.createdAt == request.time
+    &amp;&amp; request.resource.data.action in ['approve','reject','suspend','reactivate','card_standard','note'];
+  allow update, delete: if false;
+}
+
+match /publicDrivers/{code} {
+  allow get: if true;
+  allow list: if false;
+  allow write: if isFullAdmin();
+}</code></pre></div>
+<p>Côté client, ajouter dans chaque action de <code>DriversContext</code> (approve, reactivate, reject, suspend, upgrade) :</p>
+<div class="wrap"><pre><code>batch.set(doc(db, 'publicDrivers', cardNumber), {
+  displayName: driver.displayName,
+  vehicleType: driver.vehicleType,
+  vehicleNumber: driver.vehicleNumber,
+  cardType, status: 'approved',            // 'rejected' | 'suspended' selon l’action
+  validUntil: cardValidUntilVal,           // deleteField() pour la carte standard
+  updatedAt: serverTimestamp(),
+});</code></pre></div>
+
+<h2>4. Feuille de route vers « terminé »</h2>
+<p class="mu">Cochez au fur et à mesure : la barre mesure l’avancement de <b>cette liste</b>, pas un score de qualité global.</p>
+<div class="card">
+<div class="bar"><i id="pb"></i></div>
+<p id="pt" class="mu" style="margin:6px 0 12px">0 / 0</p>
+
+<h3>Phase 0 – Aujourd’hui (bloquant)</h3>
+<label class="ck"><input type="checkbox"><span>Console Auth : confirmer l’existence des deux adresses Super Admin, retirer l’inutile (C1)</span></label>
+<label class="ck"><input type="checkbox"><span>Comparer les règles déployées au fichier du dépôt (console Firestore → Règles) (C5)</span></label>
+<label class="ck"><input type="checkbox"><span>Déployer les règles §3 après tests à l’émulateur (C1–C4)</span></label>
+<label class="ck"><input type="checkbox"><span>Retirer <code>registerSuperAdmin</code> ; passer au custom claim <code>superAdmin</code> (C1)</span></label>
+
+<h3 style="margin-top:14px">Phase 1 – Semaine 1 (fonctionnel)</h3>
+<label class="ck"><input type="checkbox"><span>Collection <code>publicDrivers</code> + réécriture de <code>PublicVerifier</code> (H1)</span></label>
+<label class="ck"><input type="checkbox"><span><code>firebase.json</code> avec rewrite SPA, en-têtes, <code>VITE_PUBLIC_VERIFY_URL</code> fixe (M3, M4)</span></label>
+<label class="ck"><input type="checkbox"><span>Griser les actions pour le rôle Dispatch dans l’interface (C4)</span></label>
+<label class="ck"><input type="checkbox"><span>Corriger la cohabitation des service workers, aligner les versions Firebase (H4)</span></label>
+<label class="ck"><input type="checkbox"><span>Bloquer l’approbation selon <code>licenseRequired</code> et la checklist (M1)</span></label>
+
+<h3 style="margin-top:14px">Phase 2 – Semaines 2–3 (backend)</h3>
+<label class="ck"><input type="checkbox"><span>Dossier <code>functions/</code> : notification FCM à la création d’une candidature (H3)</span></label>
+<label class="ck"><input type="checkbox"><span>Fonction planifiée d’expiration des cartes provisoires (H2)</span></label>
+<label class="ck"><input type="checkbox"><span>Fonction <code>revokeAdmin</code> + invitation par e-mail de réinitialisation (H6)</span></label>
+<label class="ck"><input type="checkbox"><span>Journal d’audit généré côté serveur (H5)</span></label>
+<label class="ck"><input type="checkbox"><span>Durcir les règles <code>rides</code> avec les équipes des apps Client/Chauffeur (C5)</span></label>
+
+<h3 style="margin-top:14px">Phase 3 – Mise en production</h3>
+<label class="ck"><input type="checkbox"><span>App Check + restriction de la clé API ; MFA pour le Super Admin (L1, L3)</span></label>
+<label class="ck"><input type="checkbox"><span>CI : <code>tsc</code>, build, tests de règles ; activer <code>strict</code> (M3, M5)</span></label>
+<label class="ck"><input type="checkbox"><span>Nettoyer les dépendances inutilisées, renommer le paquet (M5)</span></label>
+<label class="ck"><input type="checkbox"><span>Test de bout en bout sur téléphone réel : inscription chauffeur → alerte admin app fermée → décision → scan du QR sans connexion</span></label>
+</div>
+
+<h2>5. Critère de « terminé à 100 % »</h2>
+<table><thead><tr><th>Critère</th><th>Preuve attendue</th></tr></thead><tbody>
+<tr><td>Un non-admin ne lit ni ne modifie aucun profil tiers</td><td>Tests d’émulateur verts (get, list, create, update)</td></tr>
+<tr><td>Dispatch ne peut que consulter</td><td>Écriture refusée par l’API, pas seulement masquée</td></tr>
+<tr><td>Le QR fonctionne sans connexion</td><td>Scan réel depuis un téléphone non connecté</td></tr>
+<tr><td>Alerte reçue app fermée</td><td>Notification reçue sur 1 Android et 1 iPhone (PWA installée)</td></tr>
+<tr><td>Carte expirée = chauffeur suspendu</td><td>Journal serveur de la fonction planifiée</td></tr>
+<tr><td>Chaque décision est tracée</td><td>Log présent pour 100 % des changements de statut</td></tr>
+</tbody></table>
+
+<p class="mu" style="margin-top:32px">Source externe citée : documentation Firebase « Règles de sécurité et Firebase Authentication » (<code>email_verified</code>, custom claims). Le comportement des service workers (un seul par portée) est un principe général des navigateurs ; il n’a pas été testé sur votre build.</p>
+</main>
+<script>
+(function(){var b=[].slice.call(document.querySelectorAll('.ck input'));function u(){var d=b.filter(function(x){return x.checked}).length;document.getElementById('pb').style.width=(100*d/b.length)+'%';document.getElementById('pt').textContent=d+' / '+b.length+' tâches terminées'}b.forEach(function(x){x.addEventListener('change',u)});u()})();
+</script>
+</body>
+</html>

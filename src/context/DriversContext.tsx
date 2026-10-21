@@ -45,6 +45,7 @@ interface DriversContextType {
   updateChecklist: (driverId: string, checklist: DriverChecklist) => Promise<void>;
   updateAdminNote: (driverId: string, note: string) => Promise<void>;
   updateDriverLicenseStatus: (driverId: string, hasLicense: boolean) => Promise<void>;
+  syncApprovedDriversToPublic: () => Promise<number>;
 
   // Journal d'audit
   logs: AdminLog[];
@@ -319,7 +320,7 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
-  // ACTIONS CHAUFFEURS VIA WRITE BATCH
+  // ACTIONS CHAUFFEURS VIA WRITE BATCH (AVEC REGISTRE PUBLIC ET AUDIT RENFORCÉ)
 
   const approveDriver = async (
     driver: UserProfile,
@@ -334,7 +335,7 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const now = new Date();
     const cardType = hasLicense ? 'standard' : 'provisional_qr';
-    const cardNumber = driver.driverCode || driver.cardNumber || `GNG-${driver.id.substring(0, 6).toUpperCase()}`;
+    const cardNumber = (driver.driverCode || driver.cardNumber || `GNG-${driver.id.substring(0, 6).toUpperCase()}`).toUpperCase();
 
     // Calcul de l'expiration pour provisional_qr
     let cardValidUntilVal: any = deleteField();
@@ -367,14 +368,30 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     batch.update(userRef, updates);
 
-    // Journal d'audit obligatoire
+    // H1: Écriture atomique dans publicDrivers/{cardNumber} pour vérification publique sans login
+    const publicRef = doc(db, 'publicDrivers', cardNumber);
+    batch.set(publicRef, {
+      driverCode: cardNumber,
+      displayName: driver.displayName,
+      vehicleType: driver.vehicleType || 'moto',
+      vehicleNumber: driver.vehicleNumber || 'Non renseigné',
+      cardType: cardType,
+      cardNumber: cardNumber,
+      status: 'approved',
+      isApprovedDriver: true,
+      validUntil: cardValidUntilVal,
+      photoUrl: driver.photoUrl || null,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    // H5: Journal d'audit inaltérable avec identifiants stricts du token
     batch.set(logRef, {
       driverId: driver.id,
       driverName: driver.displayName,
       action: 'approve',
       reason: adminNote || (hasLicense ? 'Approuvé avec permis (carte standard)' : 'Approuvé sans permis (carte provisoire QR)'),
-      adminId: adminProfile.uid,
-      adminEmail: adminProfile.email || 'admin@allodabou.ci',
+      adminId: currentUser?.uid || adminProfile.uid,
+      adminEmail: currentUser?.email || adminProfile.email || 'mardoukeni@gmail.com',
       createdAt: serverTimestamp(),
     });
 
@@ -395,6 +412,7 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const batch = writeBatch(db);
     const userRef = doc(db, 'users', driver.id);
     const logRef = doc(collection(db, 'adminLogs'));
+    const pCode = (driver.driverCode || driver.cardNumber || `GNG-${driver.id.substring(0, 6).toUpperCase()}`).toUpperCase();
 
     batch.update(userRef, {
       role: 'driver_pending',
@@ -407,13 +425,24 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: serverTimestamp(),
     });
 
+    // Mise à jour du registre public
+    const publicRef = doc(db, 'publicDrivers', pCode);
+    batch.set(publicRef, {
+      driverCode: pCode,
+      displayName: driver.displayName,
+      status: 'rejected',
+      isApprovedDriver: false,
+      rejectionReason: reason.trim().slice(0, 300),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
     batch.set(logRef, {
       driverId: driver.id,
       driverName: driver.displayName,
       action: 'reject',
       reason: reason.trim().slice(0, 300),
-      adminId: adminProfile.uid,
-      adminEmail: adminProfile.email || 'admin@allodabou.ci',
+      adminId: currentUser?.uid || adminProfile.uid,
+      adminEmail: currentUser?.email || adminProfile.email || 'mardoukeni@gmail.com',
       createdAt: serverTimestamp(),
     });
 
@@ -434,6 +463,7 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const batch = writeBatch(db);
     const userRef = doc(db, 'users', driver.id);
     const logRef = doc(collection(db, 'adminLogs'));
+    const pCode = (driver.driverCode || driver.cardNumber || `GNG-${driver.id.substring(0, 6).toUpperCase()}`).toUpperCase();
 
     batch.update(userRef, {
       role: 'driver_pending',
@@ -447,13 +477,24 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: serverTimestamp(),
     });
 
+    // Mise à jour immédiate du registre public
+    const publicRef = doc(db, 'publicDrivers', pCode);
+    batch.set(publicRef, {
+      driverCode: pCode,
+      displayName: driver.displayName,
+      status: 'suspended',
+      isApprovedDriver: false,
+      suspensionReason: reason.trim().slice(0, 300),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
     batch.set(logRef, {
       driverId: driver.id,
       driverName: driver.displayName,
       action: 'suspend',
       reason: reason.trim().slice(0, 300),
-      adminId: adminProfile.uid,
-      adminEmail: adminProfile.email || 'admin@allodabou.ci',
+      adminId: currentUser?.uid || adminProfile.uid,
+      adminEmail: currentUser?.email || adminProfile.email || 'mardoukeni@gmail.com',
       createdAt: serverTimestamp(),
     });
 
@@ -477,7 +518,7 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const effectiveLicense = hasLicense ?? driver.hasLicense ?? false;
     const cardType = effectiveLicense ? 'standard' : 'provisional_qr';
-    const cardNumber = driver.driverCode || driver.cardNumber || `GNG-${driver.id.substring(0, 6).toUpperCase()}`;
+    const cardNumber = (driver.driverCode || driver.cardNumber || `GNG-${driver.id.substring(0, 6).toUpperCase()}`).toUpperCase();
 
     let cardValidUntilVal: any = deleteField();
     if (!effectiveLicense) {
@@ -509,13 +550,29 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     batch.update(userRef, updates);
 
+    // Mise à jour atomique du registre public
+    const publicRef = doc(db, 'publicDrivers', cardNumber);
+    batch.set(publicRef, {
+      driverCode: cardNumber,
+      displayName: driver.displayName,
+      vehicleType: driver.vehicleType || 'moto',
+      vehicleNumber: driver.vehicleNumber || 'Non renseigné',
+      cardType: cardType,
+      cardNumber: cardNumber,
+      status: 'approved',
+      isApprovedDriver: true,
+      validUntil: cardValidUntilVal,
+      photoUrl: driver.photoUrl || null,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
     batch.set(logRef, {
       driverId: driver.id,
       driverName: driver.displayName,
       action: 'reactivate',
       reason: adminNote || 'Réactivation du compte chauffeur',
-      adminId: adminProfile.uid,
-      adminEmail: adminProfile.email || 'admin@allodabou.ci',
+      adminId: currentUser?.uid || adminProfile.uid,
+      adminEmail: currentUser?.email || adminProfile.email || 'mardoukeni@gmail.com',
       createdAt: serverTimestamp(),
     });
 
@@ -532,6 +589,7 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const batch = writeBatch(db);
     const userRef = doc(db, 'users', driver.id);
     const logRef = doc(collection(db, 'adminLogs'));
+    const pCode = (driver.driverCode || driver.cardNumber || `GNG-${driver.id.substring(0, 6).toUpperCase()}`).toUpperCase();
 
     batch.update(userRef, {
       hasLicense: true,
@@ -540,13 +598,22 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: serverTimestamp(),
     });
 
+    const publicRef = doc(db, 'publicDrivers', pCode);
+    batch.set(publicRef, {
+      cardType: 'standard',
+      validUntil: deleteField(),
+      status: 'approved',
+      isApprovedDriver: true,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
     batch.set(logRef, {
       driverId: driver.id,
       driverName: driver.displayName,
       action: 'card_standard',
       reason: 'Permis de conduire physique présenté. Passage en carte officielle standard permanente.',
-      adminId: adminProfile.uid,
-      adminEmail: adminProfile.email || 'admin@allodabou.ci',
+      adminId: currentUser?.uid || adminProfile.uid,
+      adminEmail: currentUser?.email || adminProfile.email || 'mardoukeni@gmail.com',
       createdAt: serverTimestamp(),
     });
 
@@ -604,6 +671,35 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   };
 
+  const syncApprovedDriversToPublic = async (): Promise<number> => {
+    if (!adminProfile) return 0;
+    const approvedList = drivers.filter((d) => d.isApprovedDriver && d.applicationStatus === 'approved');
+    let count = 0;
+    for (const d of approvedList) {
+      const pCode = (d.driverCode || d.cardNumber || `GNG-${d.id.substring(0, 6).toUpperCase()}`).toUpperCase();
+      const publicRef = doc(db, 'publicDrivers', pCode);
+      await setDoc(
+        publicRef,
+        {
+          driverCode: pCode,
+          displayName: d.displayName,
+          vehicleType: d.vehicleType || 'moto',
+          vehicleNumber: d.vehicleNumber || 'Non renseigné',
+          cardType: d.cardType || (d.hasLicense ? 'standard' : 'provisional_qr'),
+          cardNumber: d.cardNumber || pCode,
+          status: 'approved',
+          isApprovedDriver: true,
+          validUntil: d.cardValidUntil || null,
+          photoUrl: d.photoUrl || null,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      count++;
+    }
+    return count;
+  };
+
   return (
     <DriversContext.Provider
       value={{
@@ -623,6 +719,7 @@ export const DriversProvider: React.FC<{ children: React.ReactNode }> = ({ child
         updateChecklist,
         updateAdminNote,
         updateDriverLicenseStatus,
+        syncApprovedDriversToPublic,
         logs,
         logsLoading,
       }}

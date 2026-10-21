@@ -14,7 +14,9 @@ export const DriverCardPreview: React.FC<DriverCardPreviewProps> = ({ driver, on
   const code = driver.driverCode || driver.cardNumber || `GNG-${driver.id.substring(0, 6).toUpperCase()}`;
 
   // URL encodée dans le QR Code (Strictement aucune donnée personnelle !)
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://allodabou.ci';
+  const baseUrl =
+    import.meta.env.VITE_PUBLIC_VERIFY_URL ||
+    (typeof window !== 'undefined' ? window.location.origin : 'https://allodabou.ci');
   const qrUrl = `${baseUrl}/verifier/${code}`;
 
   const validFromStr = formatFrenchDate(driver.cardValidFrom || driver.reviewedAt || new Date(), false);

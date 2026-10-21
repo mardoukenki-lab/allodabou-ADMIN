@@ -38,11 +38,12 @@ interface AuthContextType {
   loading: boolean;
   authError: string | null;
   login: (email: string, pass: string) => Promise<boolean>;
-  registerSuperAdmin: (password: string, emailChoice?: string) => Promise<boolean>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   clearError: () => void;
   isSuperAdmin: boolean;
+  isDispatch: boolean;
+  isFullAdmin: boolean;
   
   // Gestion multi-admins (jusqu'à 5 admins créés par le Super Admin)
   adminUsers: AdminUser[];
@@ -52,7 +53,7 @@ interface AuthContextType {
   maxAdminsLimit: number;
 }
 
-const SUPER_ADMIN_EMAILS = ['mardoukeni@gmail.com', 'mardoukenki@gmail.com'];
+export const SUPER_ADMIN_EMAILS = ['mardoukeni@gmail.com', 'mardoukenki@gmail.com'];
 const MAX_ADMINS_LIMIT = 5;
 
 export function checkIsSuperAdmin(email?: string | null): boolean {
@@ -267,51 +268,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const registerSuperAdmin = async (password: string, emailChoice?: string): Promise<boolean> => {
-    setLoading(true);
-    setAuthError(null);
-    try {
-      const email = (emailChoice || 'mardoukeni@gmail.com').toLowerCase().trim();
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const user = cred.user;
-
-      const adminRef = doc(db, 'admins', user.uid);
-      try {
-        await setDoc(adminRef, {
-          email: user.email,
-          name: 'Super Administrateur Allô Dabou',
-          role: 'super_admin',
-          fcmTokens: [],
-          createdAt: serverTimestamp(),
-          lastSeenAt: serverTimestamp(),
-        });
-      } catch (docErr) {
-        console.warn('[Auth] Avertissement lors de la création Firestore du super admin:', docErr);
-      }
-
-      setCurrentUser(user);
-      setAdminProfile({
-        uid: user.uid,
-        email: user.email,
-        name: 'Super Administrateur Allô Dabou',
-        role: 'super_admin',
-        isSuperAdmin: true,
-      });
-      setLoading(false);
-      return true;
-    } catch (err: any) {
-      setLoading(false);
-      if (err.code === 'auth/email-already-in-use') {
-        setAuthError('Ce compte existe déjà. Connectez-vous avec votre mot de passe ou cliquez sur "Mot de passe oublié".');
-      } else if (err.code === 'auth/weak-password') {
-        setAuthError('Le mot de passe doit comporter au moins 6 caractères.');
-      } else {
-        setAuthError(err.message || 'Erreur lors de la création du compte.');
-      }
-      return false;
-    }
-  };
-
   /**
    * Permet au Super Admin d'ajouter jusqu'à 5 administrateurs.
    * Utilise une instance Firebase Auth secondaire pour créer le compte sans déconnecter le Super Admin actuel.
@@ -355,7 +311,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error('Cette adresse email est déjà utilisée par un compte Firebase.');
       }
       if (authErr.code === 'auth/weak-password') {
-        throw new Error('Le mot de passe doit contenir au moins 6 caractères.');
+        throw new Error('Le mot de passe doit contenir au moins 8 caractères.');
       }
       throw new Error(authErr.message || 'Erreur lors de la création de l’identifiant.');
     }
@@ -367,21 +323,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: normalizedEmail,
         name: name.trim(),
         role: role,
-        addedBy: adminProfile.email || 'Super Admin',
+        addedBy: currentUser?.email || adminProfile.email || 'Super Admin',
         fcmTokens: [],
         createdAt: serverTimestamp(),
         lastSeenAt: serverTimestamp(),
       });
 
-      // Journalisation dans adminLogs
+      // Journalisation dans adminLogs (audit H5: action autorisée 'note' ou 'create_admin')
       const logRef = collection(db, 'adminLogs');
       await addDoc(logRef, {
         driverId: newUid,
         driverName: name.trim(),
         action: 'note',
         reason: `Création du compte administrateur ${role === 'dispatch' ? 'Dispatch' : 'Admin'} : ${name.trim()} (${normalizedEmail})`,
-        adminId: adminProfile.uid,
-        adminEmail: adminProfile.email || 'Super Admin',
+        adminId: currentUser?.uid || adminProfile.uid,
+        adminEmail: currentUser?.email || adminProfile.email || 'mardoukeni@gmail.com',
         createdAt: serverTimestamp(),
       });
     } catch (firestoreErr) {
@@ -391,7 +347,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
-   * Permet au Super Admin de supprimer/révoquer un administrateur.
+   * Permet au Super Admin de révoquer un administrateur.
    */
   const removeAdminUser = async (uid: string): Promise<void> => {
     if (!adminProfile?.isSuperAdmin) {
@@ -414,8 +370,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         driverName: target.name,
         action: 'note',
         reason: `Révocation de l'accès administrateur pour : ${target.name} (${target.email})`,
-        adminId: adminProfile.uid,
-        adminEmail: adminProfile.email || 'Super Admin',
+        adminId: currentUser?.uid || adminProfile.uid,
+        adminEmail: currentUser?.email || adminProfile.email || 'mardoukeni@gmail.com',
         createdAt: serverTimestamp(),
       });
     } catch (err) {
@@ -426,6 +382,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async (): Promise<void> => {
     try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('allo_dabou_admin_fcm_token');
+        sessionStorage.clear();
+      }
       await signOut(auth);
       setCurrentUser(null);
       setAdminProfile(null);
@@ -440,15 +400,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await sendPasswordResetEmail(auth, email.trim());
     } catch (err: unknown) {
-      const firebaseErr = err as { code?: string; message?: string };
-      if (firebaseErr.code === 'auth/user-not-found') {
-        throw new Error('Aucun compte administrateur trouvé avec cette adresse.');
-      }
-      throw new Error(firebaseErr.message || 'Erreur lors de l’envoi de l’email.');
+      // Pour éviter l'énumération de comptes (audit L3), on ne divulgue pas l'existence ou l'absence du compte
+      console.warn('[Auth] Requête de réinitialisation mot de passe traitée:', err);
     }
   };
 
   const clearError = () => setAuthError(null);
+
+  const isSuper = !!adminProfile?.isSuperAdmin;
+  const isDispatch = adminProfile?.role === 'dispatch';
+  const isFullAdmin = isSuper || adminProfile?.role === 'admin' || adminProfile?.role === 'super_admin';
 
   return (
     <AuthContext.Provider
@@ -458,11 +419,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         authError,
         login,
-        registerSuperAdmin,
         logout,
         resetPassword,
         clearError,
-        isSuperAdmin: !!adminProfile?.isSuperAdmin,
+        isSuperAdmin: isSuper,
+        isDispatch,
+        isFullAdmin,
         adminUsers,
         adminUsersLoading,
         addAdminUser,

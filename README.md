@@ -10,35 +10,14 @@ Application PWA d'administration mobile-first, 100 % en français, servant à re
 
 ---
 
-## 1. Comment créer son compte Super Admin (`mardoukeni@gmail.com`)
+## 1. Accès Super Admin (`mardoukeni@gmail.com` / `mardoukenki@gmail.com`)
 
-Deux méthodes simples et sécurisées sont disponibles :
-
-### Méthode A : Directement depuis l'écran d'accueil de l'application (Recommandée)
 1. Ouvrez l'application **Allô Dabou Admin**.
-2. Sur l'écran de connexion, cliquez sur le bouton vert : **« Premier démarrage ? Activer mon compte Super Admin »**.
-3. Choisissez votre mot de passe (minimum 6 caractères) et confirmez-le.
-4. Cliquez sur **« Activer et me connecter »** :
-   - Votre compte Firebase Auth est créé.
-   - Votre document Super Administrateur `admins/{uid}` est automatiquement amorcé dans Firestore.
-   - Les règles de sécurité déployées reconnaissent instantanément votre adresse comme Super Admin.
-5. Vous accédez immédiatement au tableau de bord.
+2. Sur l'écran de connexion, saisissez votre adresse e-mail Super Admin et votre mot de passe.
+3. Cliquez sur **« Se connecter »**.
+4. Les règles de sécurité déployées reconnaissent automatiquement les adresses Super Administrateur (`mardoukeni@gmail.com` et `mardoukenki@gmail.com`) et accordent les privilèges complets de gestion de la flotte et de l'équipe.
 
-### Méthode B : Depuis la console Firebase (Option manuelle)
-1. Ouvrez la **Console Firebase** > Projet `project-89032b5a-6178-4b41-90b`.
-2. Allez dans **Authentication** > **Users** > Cliquez sur **Ajouter un utilisateur** avec `mardoukeni@gmail.com` et votre mot de passe.
-3. Copiez l'**UID** généré.
-4. Allez dans **Firestore Database** (base `ai-studio-alldabouchauffeu-...`) > collection `admins` > Ajoutez un document avec comme ID l'**UID** copié :
-   ```json
-   {
-     "email": "mardoukeni@gmail.com",
-     "name": "Super Administrateur Allô Dabou",
-     "role": "super_admin",
-     "fcmTokens": [],
-     "createdAt": "2026-10-15T00:00:00Z"
-   }
-   ```
-5. Connectez-vous sur l'application avec cet e-mail et votre mot de passe.
+En cas de mot de passe oublié, le lien **« Mot de passe oublié ? »** sur l'écran d'accueil transmet un lien sécurisé de réinitialisation directement à votre adresse e-mail.
 
 ---
 

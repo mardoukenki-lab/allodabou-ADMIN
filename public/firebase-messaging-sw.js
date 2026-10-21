@@ -1,7 +1,7 @@
 /* eslint-disable no-undef */
 // Firebase Messaging Service Worker for background notifications
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
 const firebaseConfig = {
   projectId: "project-89032b5a-6178-4b41-90b",

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, AdminAction } from '../types';
 import { useDrivers } from '../context/DriversContext';
+import { useAuth } from '../context/AuthContext';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { formatFrenchDate } from '../utils/date';
 import { Checklist } from './Checklist';
@@ -46,6 +47,7 @@ export const DriverDetail: React.FC<DriverDetailProps> = ({ driver, onBack }) =>
     settings,
     logs,
   } = useDrivers();
+  const { isDispatch } = useAuth();
 
   // Modales
   const [modalAction, setModalAction] = useState<AdminAction | null>(null);
@@ -380,20 +382,58 @@ export const DriverDetail: React.FC<DriverDetailProps> = ({ driver, onBack }) =>
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Si En attente : Approuver OU Refuser */}
-            {isPending && (
-              <>
+          {isDispatch ? (
+            <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center gap-3 max-w-md">
+              <Shield className="w-5 h-5 text-blue-600 shrink-0" />
+              <div>
+                <p className="font-bold text-blue-950">Profil Dispatch (Consultation)</p>
+                <p className="text-blue-800 text-[11px] mt-0.5 leading-relaxed">
+                  Votre rôle permet la consultation et le contact terrain. Les décisions administratives officielles (approbation, refus, suspension) sont réservées aux Administrateurs.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Si En attente : Approuver OU Refuser */}
+              {isPending && (
+                <>
+                  <button
+                    type="button"
+                    disabled={!isOnline}
+                    onClick={() => setModalAction('reject')}
+                    className="min-h-[44px] px-4 py-2.5 rounded-2xl border border-red-300 text-red-700 hover:bg-red-50 font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    <span>Refuser le dossier</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!isOnline}
+                    onClick={() => setModalAction('approve')}
+                    className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0D631B] hover:bg-[#0a4d15] text-white font-bold text-xs flex items-center gap-2 shadow-md transition-colors disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Approuver le chauffeur</span>
+                  </button>
+                </>
+              )}
+
+              {/* Si Approuvé : Suspendre */}
+              {isApproved && (
                 <button
                   type="button"
                   disabled={!isOnline}
-                  onClick={() => setModalAction('reject')}
-                  className="min-h-[44px] px-4 py-2.5 rounded-2xl border border-red-300 text-red-700 hover:bg-red-50 font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
+                  onClick={() => setModalAction('suspend')}
+                  className="min-h-[44px] px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <XCircle className="w-4 h-4" />
-                  <span>Refuser le dossier</span>
+                  <AlertOctagon className="w-4 h-4" />
+                  <span>Suspendre le compte</span>
                 </button>
+              )}
 
+              {/* Si Refusé : Possibilité de Réexaminer / Approuver */}
+              {isRejected && (
                 <button
                   type="button"
                   disabled={!isOnline}
@@ -401,50 +441,24 @@ export const DriverDetail: React.FC<DriverDetailProps> = ({ driver, onBack }) =>
                   className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0D631B] hover:bg-[#0a4d15] text-white font-bold text-xs flex items-center gap-2 shadow-md transition-colors disabled:opacity-50"
                 >
                   <CheckCircle className="w-4 h-4" />
-                  <span>Approuver le chauffeur</span>
+                  <span>Reconsidérer et Approuver</span>
                 </button>
-              </>
-            )}
+              )}
 
-            {/* Si Approuvé : Suspendre */}
-            {isApproved && (
-              <button
-                type="button"
-                disabled={!isOnline}
-                onClick={() => setModalAction('suspend')}
-                className="min-h-[44px] px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 font-bold text-xs flex items-center gap-2 transition-colors disabled:opacity-50"
-              >
-                <AlertOctagon className="w-4 h-4" />
-                <span>Suspendre le compte</span>
-              </button>
-            )}
-
-            {/* Si Refusé : Possibilité de Réexaminer / Approuver */}
-            {isRejected && (
-              <button
-                type="button"
-                disabled={!isOnline}
-                onClick={() => setModalAction('approve')}
-                className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0D631B] hover:bg-[#0a4d15] text-white font-bold text-xs flex items-center gap-2 shadow-md transition-colors disabled:opacity-50"
-              >
-                <CheckCircle className="w-4 h-4" />
-                <span>Reconsidérer et Approuver</span>
-              </button>
-            )}
-
-            {/* Si Suspendu : Réactiver */}
-            {isSuspended && (
-              <button
-                type="button"
-                disabled={!isOnline}
-                onClick={() => setModalAction('reactivate')}
-                className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0D631B] hover:bg-[#0a4d15] text-white font-bold text-xs flex items-center gap-2 shadow-md transition-colors disabled:opacity-50"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Réactiver le chauffeur</span>
-              </button>
-            )}
-          </div>
+              {/* Si Suspendu : Réactiver */}
+              {isSuspended && (
+                <button
+                  type="button"
+                  disabled={!isOnline}
+                  onClick={() => setModalAction('reactivate')}
+                  className="min-h-[44px] px-5 py-2.5 rounded-2xl bg-[#0D631B] hover:bg-[#0a4d15] text-white font-bold text-xs flex items-center gap-2 shadow-md transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Réactiver le chauffeur</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

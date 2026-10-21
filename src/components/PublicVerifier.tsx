@@ -24,54 +24,58 @@ export const PublicVerifier: React.FC<{ code: string }> = ({ code }) => {
     async function verifyDriver() {
       setLoading(true);
       setError(null);
-      try {
-        // Recherche dans users par driverCode
-        const usersCol = collection(db, 'users');
-        const q = query(usersCol, where('driverCode', '==', code.toUpperCase()));
-        const snap = await getDocs(q);
+      const cleanCode = code.toUpperCase().trim();
 
-        if (!snap.empty) {
-          const data = snap.docs[0].data();
+      try {
+        // H1: Interrogation directe du registre public publicDrivers (autorisé sans authentification)
+        const publicDocRef = doc(db, 'publicDrivers', cleanCode);
+        const publicSnap = await getDoc(publicDocRef);
+
+        if (publicSnap.exists()) {
+          const data = publicSnap.data();
           setDriver({
-            displayName: data.displayName || 'Chauffeur',
-            driverCode: data.driverCode || code,
+            displayName: data.displayName || 'Chauffeur Agréé',
+            driverCode: data.driverCode || cleanCode,
             vehicleType: data.vehicleType || 'moto',
             vehicleNumber: data.vehicleNumber || 'Non renseigné',
             cardType: data.cardType || 'provisional_qr',
-            cardValidUntil: data.cardValidUntil,
-            isApprovedDriver: !!data.isApprovedDriver,
-            applicationStatus: data.applicationStatus,
+            cardValidUntil: data.validUntil,
+            isApprovedDriver: data.isApprovedDriver ?? (data.status === 'approved'),
+            applicationStatus: data.status || 'approved',
             photoUrl: data.photoUrl,
           });
-        } else {
-          // Tentative de résolution par driverCodes/{code}
-          const codeRef = doc(db, 'driverCodes', code.toUpperCase());
-          const codeSnap = await getDoc(codeRef);
-          if (codeSnap.exists() && codeSnap.data()?.uid) {
-            const userSnap = await getDoc(doc(db, 'users', codeSnap.data().uid));
-            if (userSnap.exists()) {
-              const uData = userSnap.data();
-              setDriver({
-                displayName: uData.displayName || 'Chauffeur',
-                driverCode: uData.driverCode || code,
-                vehicleType: uData.vehicleType || 'moto',
-                vehicleNumber: uData.vehicleNumber || 'Non renseigné',
-                cardType: uData.cardType || 'provisional_qr',
-                cardValidUntil: uData.cardValidUntil,
-                isApprovedDriver: !!uData.isApprovedDriver,
-                applicationStatus: uData.applicationStatus,
-                photoUrl: uData.photoUrl,
-              });
-            } else {
-              setError('Profil chauffeur introuvable.');
-            }
-          } else {
-            setError('Ce code chauffeur n’existe pas dans le registre officiel Allô Dabou.');
-          }
+          return;
         }
+
+        // Repli : Si non trouvé dans publicDrivers, tentative sur le registre users si l'utilisateur est connecté (administrateurs)
+        try {
+          const usersCol = collection(db, 'users');
+          const q = query(usersCol, where('driverCode', '==', cleanCode));
+          const snap = await getDocs(q);
+
+          if (!snap.empty) {
+            const data = snap.docs[0].data();
+            setDriver({
+              displayName: data.displayName || 'Chauffeur',
+              driverCode: data.driverCode || cleanCode,
+              vehicleType: data.vehicleType || 'moto',
+              vehicleNumber: data.vehicleNumber || 'Non renseigné',
+              cardType: data.cardType || 'provisional_qr',
+              cardValidUntil: data.cardValidUntil,
+              isApprovedDriver: !!data.isApprovedDriver,
+              applicationStatus: data.applicationStatus,
+              photoUrl: data.photoUrl,
+            });
+            return;
+          }
+        } catch {
+          // Ignorer l'erreur de repli si le visiteur n'est pas connecté
+        }
+
+        setError('Ce code chauffeur n’existe pas dans le registre officiel Allô Dabou ou n’a pas encore été validé.');
       } catch (err) {
         console.error('Erreur vérification:', err);
-        setError('Impossible de joindre le serveur de vérification.');
+        setError('Impossible de joindre le serveur de vérification Allô Dabou.');
       } finally {
         setLoading(false);
       }

@@ -90,7 +90,7 @@ export async function requestNotificationPermissionAndGetToken(adminUid?: string
     if ('serviceWorker' in navigator) {
       try {
         registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-          scope: '/',
+          scope: '/firebase-cloud-messaging-push-scope',
         });
         await navigator.serviceWorker.ready;
       } catch (swErr) {
